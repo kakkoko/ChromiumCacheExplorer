@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-from typing import Union, Any
+from typing import Union, Any, Iterable
 from pathlib import Path
 import sys
 import struct
 import binascii
+import hashlib
+from .entry import CacheEntry
 
 if sys.version_info < (3, 6):
     raise ValueError('unsupported Python version; requires 3.6 or later')
@@ -69,3 +71,31 @@ class CacheIndex:
         self.base = cache_dir
         self.hashes = hashes
         self.version = version
+
+    @classmethod
+    def hash(cls, url: str) -> int:
+        # ref: disk_cache::simple_util::GetEntryHashKey
+        digest = hashlib.sha1(url.encode()).digest()
+        return struct.unpack('=Q', digest[:8])
+
+    def __path(self, hash: int) -> Path:
+        return self.base / f'{hash:08x}_0'
+
+    def __len__(self) -> int:
+        return len(self.hashes)
+
+    def __contains__(self, key: Union[int, str]) -> bool:
+        n = key if isinstance(key, int) else self.hash(key)
+        return n in self.hashes
+
+    def __getitem__(self, key: Union[int, str]) -> CacheEntry:
+        n = key if isinstance(key, int) else self.hash(key)
+        if n not in self.hashes:
+            raise KeyError('unknown key')
+        return CacheEntry(self.__path(n))
+
+    def files(self) -> Iterable[Path]:
+        yield from (self.__path(hash) for hash in self.hashes)
+
+    def entries(self) -> Iterable[CacheEntry]:
+        yield from (CacheEntry(self.__path(hash)) for hash in self.hashes)
