@@ -1,101 +1,127 @@
 #!/usr/bin/env python3
-from typing import Union, Any, Iterable
+from typing import ByteString, Generator, ClassVar
 from pathlib import Path
-import sys
+from dataclasses import dataclass
+from enum import Enum
+from datetime import datetime, timedelta
 import struct
 import binascii
 import hashlib
-from .entry import CacheEntry
+from .entry import EntryRecord
+from .open import BLOCKFILE_OPENER
 
-if sys.version_info < (3, 6):
-    raise ValueError('unsupported Python version; requires 3.6 or later')
+__all__ = ["SimpleIndex"]
 
-__all__ = ['CacheIndex']
-
-# ref: disk_cache::kSimpleVersion
-_SUPPORTED_VERSION = 9
+INDEX_METADATA_MAGIC = 0x656E_7465_7220_796F
 
 
-class CacheIndex:
-    def __init__(self, *args, **kwds) -> None:
-        self.base = None  # type: Optional[Path]
-        self.hashes = set()  # type: Set[int]
-        self.version = _SUPPORTED_VERSION
-        if args or kwds:
-            self.load(*args, **kwds)
+class IndexWriteToDiskReason(Enum):
+    SHUTDOWN = 0
+    STARTUP_MERGE = 1
+    IDLE = 2
+    ANDROID_STOPPED = 3
 
-    def load(self, dir: Union[str, Path], *, strict: bool = False) -> None:
+
+@dataclass
+class IndexMetadata:
+    LEN: ClassVar[int] = 32
+    magic_number: int
+    version: int
+    entry_count: int
+    cache_size: int
+    reason: IndexWriteToDiskReason
+
+    @classmethod
+    def unpack_from(cls, buffer: ByteString, offset: int = 0) -> "IndexMetadata":
+        magic_number, version, entry_count, cache_size, reason_raw = struct.unpack_from(
+            "=QLQQL", buffer, offset
+        )
+        if magic_number != INDEX_METADATA_MAGIC:
+            raise ValueError(
+                f"invalid magic number: expected {INDEX_METADATA_MAGIC:016X}, actual {magic_number:016X}"
+            )
+        if entry_count > 1_000_000:
+            raise ValueError(f"too many entries in index: {entry_count}")
+        try:
+            reason = IndexWriteToDiskReason(reason_raw)
+        except ValueError:
+            raise ValueError(f"unknown reason: {reason_raw}")
+        return cls(magic_number, version, entry_count, cache_size, reason)
+
+    def __len__(self) -> int:
+        return self.LEN
+
+
+class SimpleIndex:
+    def __init__(
+        self,
+        dir: str | Path,
+        metadata: IndexMetadata,
+        entries: dict[int, EntryRecord],
+        last_modified: datetime,
+    ) -> None:
+        self.base = Path(dir)
+        self.meta = metadata
+        self.entries = entries
+        self.last_modified = last_modified
+
+    @classmethod
+    def load(cls, dir: str | Path) -> "SimpleIndex":
         cache_dir = Path(dir)
         if not cache_dir.is_dir():
-            raise ValueError('cache directory not found')
+            raise ValueError(f"cache directory not found: {cache_dir!s}")
 
-        # ref: disk_cache::SimpleIndexFile::kIndexFileName,
-        #      disk_cache::SimpleIndexFile::kIndexDirectory
-        index_file = cache_dir / 'index-dir' / 'the-real-index'
+        index_file = cache_dir / "index-dir" / "the-real-index"
         if not index_file.is_file():
-            raise ValueError('cache index file not found')
+            raise ValueError(f"cache index file not found: {index_file!s}")
 
-        with index_file.open('rb') as src:
+        with open(index_file, mode="rb", opener=BLOCKFILE_OPENER) as src:
             data = memoryview(src.read())
-        # ref: base::Pickle::headerT,
-        #      disk_cache::SimpleIndexFile::Deserialize
-        payload_size, crc = struct.unpack_from('=LL', data)
+        payload_size, crc = struct.unpack_from("=LL", data)
         payload = data[8:]
         if len(payload) != payload_size:
-            raise ValueError('invalid payload size')
-        if binascii.crc32(payload) & 0xffffffff != crc:
-            raise ValueError('crc32 mismatch')
+            raise ValueError(
+                f"invalid payload size: expected {payload_size}, actual {len(payload)}"
+            )
+        if (calculated_crc := binascii.crc32(payload) & 0xFFFFFFFF) != crc:
+            raise ValueError(
+                f"crc32 mismatch: expected {crc:08X}, actual {calculated_crc:08X}"
+            )
 
-        # ref: disk_cache::SimpleIndexFile::IndexMetadata::Deserialize
-        magic_number, version, entry_count, cache_size = struct.unpack_from(
-            '=QLQQ', payload)
-        if version >= 7:
-            reason = struct.unpack_from('=L', payload, 28)
-            payload = payload[32:]
-        else:
-            reason = None
-            payload = payload[28:]
+        metadata = IndexMetadata.unpack_from(payload)
+        entries: dict[int, EntryRecord] = {}
+        offset = len(metadata)
+        while len(entries) < metadata.entry_count:
+            entry = EntryRecord.unpack_from(payload, offset)
+            entries[entry.entry_hash] = entry
+            offset += len(entry)
 
-        if magic_number != 0x656e74657220796f:
-            raise ValueError('magic number mismatch')
-        if strict and version > _SUPPORTED_VERSION:
-            raise ValueError('unsupported file version')
+        cache_last_modified_raw = struct.unpack_from("=Q", payload, offset)
+        cache_last_modified = EntryRecord.EPOCH + timedelta(
+            microseconds=cache_last_modified_raw
+        )
 
-        hashes = set()  # type: Set[int]
-        # ref: disk_cache::SimpleIndexFile::Deserialize
-        while len(hashes) < entry_count:
-            hash, = struct.unpack_from('=Q', payload)
-            hashes.add(hash)
-            payload = payload[24:]
+        offset += 8
+        if offset != len(payload):
+            raise ValueError("invalid payload size")
 
-        self.base = cache_dir
-        self.hashes = hashes
-        self.version = version
+        return cls(cache_dir, metadata, entries, cache_last_modified)
 
     @classmethod
     def hash(cls, url: str) -> int:
-        # ref: disk_cache::simple_util::GetEntryHashKey
         digest = hashlib.sha1(url.encode()).digest()
-        return struct.unpack('=Q', digest[:8])
-
-    def __path(self, hash: int) -> Path:
-        return self.base / f'{hash:08x}_0'
+        return struct.unpack_from("=Q", digest)
 
     def __len__(self) -> int:
-        return len(self.hashes)
+        return len(self.entries)
 
-    def __contains__(self, key: Union[int, str]) -> bool:
+    def __contains__(self, key: int | str) -> bool:
         n = key if isinstance(key, int) else self.hash(key)
-        return n in self.hashes
+        return n in self.entries
 
-    def __getitem__(self, key: Union[int, str]) -> CacheEntry:
+    def __getitem__(self, key: int | str) -> EntryRecord:
         n = key if isinstance(key, int) else self.hash(key)
-        if n not in self.hashes:
-            raise KeyError('unknown key')
-        return CacheEntry(self.__path(n))
+        return self.entries[n]
 
-    def files(self) -> Iterable[Path]:
-        yield from (self.__path(hash) for hash in self.hashes)
-
-    def entries(self) -> Iterable[CacheEntry]:
-        yield from (CacheEntry(self.__path(hash)) for hash in self.hashes)
+    def __iter__(self) -> Generator[EntryRecord, None, None]:
+        yield from self.entries.values()
