@@ -1,0 +1,22 @@
+[project]
+name = "ChromiumCacheExplorer"
+version = "0.3"
+requires-python = ">=3.9"
+authors = [
+    {name = "kakkoko", email = "kakkoko@pushf.jp"},
+]
+description = "explore caches of Chromium browser"
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Development Status :: 4 - Beta",
+]
+
+[project.urls]
+Repository = "https://github.com/kakkoko/ChromiumCacheExplorer"
+
+[project.optional-dependencies]
+br = ["brotli"]
+zstd = ["zstandard"]
