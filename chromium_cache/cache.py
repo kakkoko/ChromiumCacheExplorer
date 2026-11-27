@@ -1,6 +1,7 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 from typing import Generator
 from pathlib import Path
+
 from .entry import EntryFile_0
 from .index import SimpleIndex
 
@@ -16,7 +17,7 @@ class DiskCache:
         self.index = SimpleIndex.load(dir)
 
     def __iter__(self) -> Generator[EntryFile_0, None, None]:
-        for item in dir.iterdir():
+        for item in self.path.iterdir():
             if not item.is_file():
                 continue
             if len(item.name) != 18:

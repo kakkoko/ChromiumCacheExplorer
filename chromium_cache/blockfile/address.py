@@ -1,11 +1,12 @@
-from io import RawIOBase
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 
 from .block import BlockFileHeader
-from .utils import BinaryReader, custom_open
+from .utils import BinaryReader
 from .blockview import BlockView
+from ..opener import custom_open
 
 __all__ = ["CacheAddress", "FileType", "new_address"]
 

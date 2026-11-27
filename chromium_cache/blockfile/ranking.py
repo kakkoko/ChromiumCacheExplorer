@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 from typing import ClassVar
 from dataclasses import dataclass
 from pathlib import Path

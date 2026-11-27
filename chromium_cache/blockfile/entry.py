@@ -1,4 +1,5 @@
-from typing import ByteString, Iterable, ClassVar
+from __future__ import annotations
+from typing import Iterable, ClassVar
 from dataclasses import dataclass
 from enum import Enum, IntFlag
 from pathlib import Path

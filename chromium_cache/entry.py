@@ -1,20 +1,28 @@
-#!/usr/bin/env python3
-from typing import ByteString, ClassVar, Generator
+from __future__ import annotations
+from typing import ByteString, ClassVar, Generator, Protocol, TypeVar, overload
 from pathlib import Path
 from enum import IntFlag
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from io import BytesIO, SEEK_SET, SEEK_CUR, SEEK_END
-import sys
+from io import SEEK_SET, SEEK_CUR, SEEK_END
 import struct
 
-__all__ = ["EntryRecord"]
+from .opener import custom_open
 
-if sys.platform ==
+__all__ = ["EntryRecord"]
 
 INITIAL_FILE_MAGIC = 0xFCFB_6D1B_A772_5C30
 FINAL_FILE_MAGIC = 0xF4FA_6F45_970D_41D8
 SPARSE_RANGE_MAGIC = 0xEB97_BF01_6553_676B
+
+T_co = TypeVar("T_co", covariant=True)
+
+
+class Reader(Protocol[T_co]):
+    @overload
+    def read(self) -> T_co | None: ...
+    @overload
+    def read(self, size, /) -> T_co | None: ...
 
 
 class InMemoryData(IntFlag):
@@ -127,9 +135,9 @@ class SimpleFile:
         self.size = size
 
     def read(self) -> bytes:
-        with self.path.open(mode="rb") as f:
+        with custom_open(self.path) as f:
             f.seek(self.__offset, SEEK_SET)
-            return f.read(len(self))
+            return f.read(self.size)
 
 
 class EntryFile_0:
@@ -137,7 +145,7 @@ class EntryFile_0:
         self.__load(Path(path))
 
     def __load(self, path: Path) -> None:
-        with path.open(mode="rb") as f:
+        with custom_open(path) as f:
             header = SimpleFileHeader.unpack_from(f.read(SimpleFileHeader.LEN))
             key = f.read(header.key_length)
 
@@ -183,7 +191,7 @@ class EntryFile_1:
         self.__load(Path(path))
 
     def __load(self, path: Path) -> None:
-        with path.open(mode="rb") as f:
+        with custom_open(path) as f:
             header = SimpleFileHeader.unpack_from(f.read(SimpleFileHeader.LEN))
             key = f.read(header.key_length)
 
@@ -211,7 +219,7 @@ class EntryFile_s:
 
     def __load(self, path: Path) -> None:
         ranges: list[SimpleFileSparseRangeHeader] = []
-        with path.open(mode="rb") as f:
+        with custom_open(path) as f:
             header = SimpleFileHeader.unpack_from(f.read(SimpleFileHeader.LEN))
             key = f.read(header.key_length)
 
@@ -238,19 +246,21 @@ class EntryFile_s:
         self.__load(self.path)
 
     def __read_range(
-        self, header: SimpleFileSparseRangeHeader, file: BytesIO
+        self, header: SimpleFileSparseRangeHeader, file: Reader[bytes]
     ) -> SimpleFileSparseRange:
         blob = file.read(header.length)
+        if blob is None:
+            raise ValueError("unexpected end of file")
         return SimpleFileSparseRange(self.path, self.key, header, blob)
 
     def read(self, index: int) -> SimpleFileSparseRange:
         header = self.__headers[index]
-        with self.path.open(mode="rb") as f:
+        with custom_open(self.path) as f:
             f.seek(header.offset, SEEK_SET)
             return self.__read_range(header, f)
 
     def read_ranges(self) -> Generator[SimpleFileSparseRange, None, None]:
-        with self.path.open(mode="rb") as f:
+        with custom_open(self.path) as f:
             for header in self.__headers:
                 f.seek(header.offset, SEEK_SET)
                 yield self.__read_range(header, f)

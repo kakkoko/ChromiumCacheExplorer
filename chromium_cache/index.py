@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 from typing import ByteString, Generator, ClassVar
 from pathlib import Path
 from dataclasses import dataclass
@@ -7,8 +7,9 @@ from datetime import datetime, timedelta
 import struct
 import binascii
 import hashlib
+
 from .entry import EntryRecord
-from .open import BLOCKFILE_OPENER
+from .opener import custom_open
 
 __all__ = ["SimpleIndex"]
 
@@ -75,7 +76,7 @@ class SimpleIndex:
         if not index_file.is_file():
             raise ValueError(f"cache index file not found: {index_file!s}")
 
-        with open(index_file, mode="rb", opener=BLOCKFILE_OPENER) as src:
+        with custom_open(index_file) as src:
             data = memoryview(src.read())
         payload_size, crc = struct.unpack_from("=LL", data)
         payload = data[8:]
@@ -96,7 +97,7 @@ class SimpleIndex:
             entries[entry.entry_hash] = entry
             offset += len(entry)
 
-        cache_last_modified_raw = struct.unpack_from("=Q", payload, offset)
+        cache_last_modified_raw = struct.unpack_from("=Q", payload, offset)[0]
         cache_last_modified = EntryRecord.EPOCH + timedelta(
             microseconds=cache_last_modified_raw
         )
@@ -110,7 +111,7 @@ class SimpleIndex:
     @classmethod
     def hash(cls, url: str) -> int:
         digest = hashlib.sha1(url.encode()).digest()
-        return struct.unpack_from("=Q", digest)
+        return struct.unpack_from("=Q", digest)[0]
 
     def __len__(self) -> int:
         return len(self.entries)

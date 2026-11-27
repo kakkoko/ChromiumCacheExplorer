@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 __all__ = ["CHROMIUM_EPOCH", "timestamp_from_microseconds"]

@@ -1,10 +1,12 @@
+from __future__ import annotations
 from typing import ClassVar
 from types import TracebackType
 from dataclasses import dataclass
 from pathlib import Path
 import struct
 
-from .utils import BinaryReader, ReadableBuffer, custom_open
+from .utils import BinaryReader, ReadableBuffer
+from ..opener import custom_open
 
 __all__ = ["BlockFile"]
 

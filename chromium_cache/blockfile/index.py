@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 from typing import Generator, ClassVar
 from types import TracebackType
 from dataclasses import dataclass
@@ -8,7 +8,8 @@ from datetime import datetime
 import struct
 
 from .address import CacheAddress, new_address
-from .utils import BinaryReader, ReadableBuffer, custom_open
+from .utils import BinaryReader, ReadableBuffer
+from ..opener import custom_open
 from ..time import timestamp_from_microseconds
 
 __all__ = ["IndexHeader", "IndexFile", "ListIndex", "LruData"]

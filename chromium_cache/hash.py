@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+from __future__ import annotations
 from typing import ByteString
 from hashlib import sha1, sha256
 import struct
@@ -40,7 +40,7 @@ def persistent_hash(data: ByteString) -> int:
 
 
 def sha1_hash(data: ByteString) -> int:
-    return struct.unpack_from("=Q", sha1(data).digest())
+    return struct.unpack_from("=Q", sha1(data).digest())[0]
 
 
 def sha256_hash(data: ByteString) -> bytes:

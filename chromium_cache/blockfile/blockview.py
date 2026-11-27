@@ -1,7 +1,8 @@
+from __future__ import annotations
 from io import BufferedReader, SEEK_SET, SEEK_CUR, SEEK_END
 from pathlib import Path
 
-from .utils import custom_open
+from ..opener import custom_open
 
 __all__ = ["BlockView"]
 

@@ -1,32 +1,17 @@
-from typing import Callable, Iterator, Protocol
+from __future__ import annotations
+from typing import TypeAlias, Iterator, Protocol
 from types import TracebackType
-from io import FileIO
-import sys
 
 __all__ = [
     "BinaryReader",
     "ReadableBuffer",
     "WriteableBuffer",
-    "custom_open",
     "key2url",
 ]
 
-_OPENER: Callable[[str, int], int] | None = None
 
-if sys.platform == "win32":
-    from .win32 import win32_make_opener
-
-    _OPENER = win32_make_opener()
-
-
-def custom_open(*args, **kwds) -> FileIO:
-    kwds["mode"] = "rb"
-    kwds["opener"] = _OPENER
-    return open(*args, **kwds)
-
-
-ReadableBuffer = bytes | bytearray | memoryview
-WriteableBuffer = bytearray | memoryview
+ReadableBuffer: TypeAlias = bytes | bytearray | memoryview
+WriteableBuffer: TypeAlias = bytearray | memoryview
 
 
 class BinaryReader(Protocol):
