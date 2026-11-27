@@ -1,15 +1,23 @@
 # Explore Cache Data of Chromium Browser
 
-Tested on Chromium 76.0.3809.100.
+Tested on Chromium 158.0.8127.37.
 
 ```py
->>> from chromium_cache import CacheIndex
->>> idx = CacheIndex('path/to/cache/directory')
->>> [entry.url for entry in idx]
+>>> import os
+>>> from pathlib import Path
+>>> from chromium_cache.blockfile import *
+>>> cache = BlockFileCache(Path(os.getenv("APPDATA")) / "Local" / "Google" / "Chrome" / "User Data" / "Default" / "Cache" / "Cache_Data")
+>>> [entry.url for entry in cache]
 ['http://www.example.com/foo.jpg', ...]
->>> entry = idx['http://www.example.com/foo.jpg']
->>> entry.url
-'http://www.example.com/foo.jpg'
->>> entry.data
-<memory at 0x7f03c8c1d648>
 ```
+
+Each `entry` has:
+
+* `creation_time: datetime`
+* `available: bool`
+    - `True` if `body` is available
+* `url: str`
+* `response_info: ResponseInfo`
+    - Dictionary object
+* `body: bytes`
+* `content_encoding: bytes | None`
